@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+
+<html lang="en">
+ <head>
+  <meta charset="utf-8" />
+  <title>Fender Telecaster&trade;</title>
+  <style>
+table {
+	border: 1px solid black;
+	border-collapse: collapse; 
+	margin: 10px 0px; }
+td, th {
+	border: 1px solid black;
+	padding: 10px; }
+button {
+	padding: 10px; }
+input {
+	border: none;
+	width: 100%; }
+  </style>
+  <script>
+var cvs, ctx, w, h, particles, modulus, l, k, n, m, interval, grabbed;
+var g = 9.81;
+var dt = 0.0001;
+var steps = 10;
+var mousePressed = false;
+
+function init() {
+	cvs = document.getElementById("cvs");
+	ctx = cvs.getContext("2d");
+	w = cvs.width;
+	h = cvs.height;
+	ctx.translate(0, h/2);
+	ctx.scale(1, -1);
+	ctx.lineJoin = "round";
+	ctx.lineEnd = "round";
+	ctx.strokeStyle = "#333333";
+}
+
+document.addEventListener("DOMContentLoaded", init, false);
+
+function setParams() {
+	stop();
+	n = w;
+    g = parseInt(document.getElementById("g").value);
+	m = parseFloat(document.getElementById("m").value);
+	l = parseFloat(document.getElementById("l").value);
+	k = parseFloat(document.getElementById("k").value);
+	modulus = parseFloat(document.getElementById("modulus").value);
+	dt = parseFloat(document.getElementById("dt").value);
+	steps = parseInt(document.getElementById("steps").value);
+	
+	particles = new Array();
+	particles[0] = newParticle(0, 0, 0, true);
+	for (var i = 1; i <= n; i++) {
+		var x = (i) * w/(n+1);
+		var y = displace(x);
+		var vy = push(x);
+		particles[i] = newParticle(i, y, vy, false);
+	}
+	particles[n+1] = newParticle(n+1, 0, 0, true);
+	
+	interval = setInterval(step, 20);
+}
+
+function stop() {
+	if (interval) {
+		clearInterval(interval);
+	}
+}
+
+function displace(x) {
+	var func = document.getElementById("initial_position").value;
+	return eval(func);
+}
+
+function push(x) {
+	var func = document.getElementById("initial_velocity").value;
+	return eval(func);
+}
+
+function newParticle(x, y, vy, fixed) {
+	return {
+		x: x,
+		y: y,
+		vx: 0,
+		vy: vy,
+		ax: 0,
+		ay: 0,
+		fixed: fixed
+	};
+}
+
+function step() {
+	for (var j = 0; j <= steps; j++) {
+		particles = newParticles();
+		for (var i = 0; i < particles.length; i++) {
+			var p = particles[i];
+			if (!p.fixed) {
+				p.vx += p.ax * dt;
+				p.vy += p.ay * dt;
+				p.x += p.vx * dt;
+				p.y += p.vy * dt;
+			}
+		}
+	}
+	paint();
+}
+
+function newParticles() {
+	var newParticles = Object.assign([], particles);
+	for (var i = 0; i < newParticles.length; i++) {
+		if (!newParticles[i].fixed) {
+			var newA = updateA(i);
+			newParticles[i].ax = newA[0];
+			newParticles[i].ay = newA[1];
+		}
+	}
+	return newParticles;
+}
+
+function updateA(i) {
+	var vx = particles[i].vx;
+	var vy = particles[i].vy;
+	
+	var x1 = particles[i].x;
+	var x0 = (i > 0) ? particles[i-1].x : 0;
+	var x2 = (i < particles.length-1) ? particles[i+1].x : 0;
+	
+	var y1 = particles[i].y;
+	var y0 = (i > 0) ? particles[i-1].y : 0;
+	var y2 = (i < particles.length-1) ? particles[i+1].y : 0;
+	
+	var d1 = Math.sqrt((y1-y0) * (y1-y0) + (x1-x0) * (x1-x0));
+	var d2 = Math.sqrt((y1-y2) * (y1-y2) + (x1-x2) * (x1-x2));
+	var nl = l/n;
+	
+	var tx = - modulus*(d1-nl)*(x1-x0)/(nl*d1) + modulus*(d2-nl)*(x2-x1)/(nl*d2);
+	var ax = tx*n/m - k*sign(vx)*vx*vx;
+	
+	var ty = - modulus*(d1-nl)*(y1-y0)/(nl*d1) + modulus*(d2-nl)*(y2-y1)/(nl*d2);
+	var ay = ty*n/m - k*sign(vy)*vy*vy - g*1000;
+	
+	return [ax, ay];
+}
+
+function sign(x) {
+	if (x < 0) {
+		return -1;
+	} else if (x > 0) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+function paint() {
+	ctx.clearRect(0, -h/2, w, h);
+	ctx.beginPath();
+	for (var i = 0; i < particles.length; i++) {
+		ctx.lineTo(particles[i].x, particles[i].y);
+	}
+	ctx.stroke();
+}
+
+function mousedown(event) {
+	mousePressed = true;
+	if (window.event) {
+		grabString(event.x - cvs.offsetLeft, -event.y+h/2);
+	} else {
+		grabString(event.pageX - cvs.offsetLeft, -event.pageY+h/2);
+	}
+}
+
+function mousemove(event) {
+	if (mousePressed && grabbed >= 0) {
+		if (window.event) {
+			particles[grabbed].x = event.x - cvs.offsetLeft;
+			particles[grabbed].y = -event.y+h/2 + cvs.offsetTop;
+		} else {
+			particles[grabbed].x = event.pageX - cvs.offsetLeft;
+			particles[grabbed].y = -event.pageY+h/2 + cvs.offsetTop;
+		}
+	}
+}
+
+function mouseup() {
+	mousePressed = false;
+	releaseString();
+}
+
+function grabString(x, y) {
+	releaseString();
+	for (var i = 0; i < particles.length; i++) {
+		var sx = particles[i].x - x;
+		var sy = particles[i].y - y;
+		if (Math.sqrt(sx*sx + sy*sy) < 30) {
+			grabbed = i;
+			particles[grabbed].fixed = true;
+			particles[grabbed].x = x;
+			particles[grabbed].y = y;
+			break;
+		}
+	}
+}
+
+function releaseString() {
+	if (grabbed >= 0) {
+		particles[grabbed].fixed = false;
+		grabbed = -1;
+	}
+}
+  </script>
+ </head>
+ <body onmouseup="mouseup()">
+  <canvas width="800px" height="400px" id="cvs" style="border: 5px groove grey; cursor: pointer" onmousedown="mousedown(event)" onmousemove="mousemove(event)" onmouseout="mouseup()"></canvas>
+  <table>
+   <thead>
+    <tr>
+     <th>Parameter</th>
+     <th>Input</th>
+     <th>Description</th>
+    </tr>
+   </thead>
+   <tbody>
+    <tr>
+     <td>m</td>
+     <td>
+      <input id="m" value="1" min="0.01" step="0.001" type="number" />
+     </td>
+     <td>Mass of each string segment</td>
+    </tr>
+    <tr>
+     <td>g</td>
+     <td>
+      <input id="g" value="9.81" step="0.01" type="number" />
+     </td>
+     <td>Acceleration due to gravity</td>
+    </tr>
+    <tr>
+     <td>l</td>
+     <td>
+      <input id="l" value="0.8" min="0.01" max="1" step="0.001" type="number" />
+     </td>
+     <td>Natural length of the string as a fraction of the length of the box</td>
+    </tr>
+    <tr>
+     <td>k</td>
+     <td>
+      <input id="k" value="0.01" min="0" step="0.001" type="number" />
+     </td>
+     <td>Resistance to motion</td>
+    </tr>
+    <tr>
+     <td>&lambda;</td>
+     <td>
+      <input id="modulus" value="50" min="0" max="120" step="0.001" type="number" />
+     </td>
+     <td>Modulus of elasticity</td>
+    </tr>
+    <tr>
+     <td>s(x)</td>
+     <td>
+      <input id="initial_position" value="Math.pow(Math.E, -(x-w/3)*(x-w/3)/40)*100+ Math.pow(Math.E, -(x-2*w/3)*(x-2*w/3)/40)*100" type="text" size="80" />
+     </td>
+     <td>Initial position of each string segment as a function of x</td>
+    </tr>
+    <tr>
+     <td>v(x)</td>
+     <td>
+      <input id="initial_velocity" value="0" type="text" size="80" />
+     </td>
+     <td>Initial velocity of each string segment as a function of x</td>
+    </tr>
+    <tr>
+     <td>dt</td>
+     <td>
+      <input id="dt" value="0.0001" min="0.00001" max="1" step="0.00001" type="number" />
+     </td>
+     <td>Time step size</td>
+    </tr>
+    <tr>
+     <td>steps</td>
+     <td>
+      <input id="steps" value="10" min="1" max="1000" type="number" />
+     </td>
+     <td>Amount of time steps to process for each update</td>
+    </tr>
+   </tbody>
+  </table>
+  <button onclick="setParams()">Run</button>
+  <button onclick="stop()">Stop</button>
+ </body>
+</html>
